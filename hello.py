@@ -14,3 +14,4 @@ print("Database version : %s " % data)
 
 # 关闭数据库连接
 db.close()
+
