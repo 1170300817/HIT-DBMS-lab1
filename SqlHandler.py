@@ -42,7 +42,7 @@ class SqlHandler:
         second_name = nameString[1]
         
         
-        sql1 = ("select * from film where director in" 
+        sql = ("select * from film where director in" 
                 "(select dir_id from director where firstName = '{}' and secondName = '{}');".format(first_name, second_name)
         )
 #        # 查导演号码
@@ -54,7 +54,7 @@ class SqlHandler:
 #        # 再根据号码查电影
 #        sql2 = "select * from film where director = '%s';" % dir_num
         try:
-            self.cursor.execute(sql1)
+            self.cursor.execute(sql)
             self.db.commit()
         except:
             print("ERROR: Can not return fetch")
@@ -98,9 +98,9 @@ class SqlHandler:
     # def getFilmbyActor(self, name):
     # 根据名字查电影
     def getFilmbyName(self, name):
-        sql1 = "select * from film where title = '%s';" % (name)
+        sql = "select * from film where title = '%s';" % (name)
         try:
-            self.cursor.execute(sql1)
+            self.cursor.execute(sql)
             self.db.commit()
         except:
             print("ERROR: Can not return fetch")
