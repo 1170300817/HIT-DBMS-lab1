@@ -35,7 +35,7 @@ class SqlHandler:
         sql = "select * from film where director = '%s';" % name
         self.cursor.execute(sql)
         results = self.cursor.fetchall()
-        print(results)
+        return results
 
     # 根据演员查电影
     def getFilmbyActor(self, name):
