@@ -187,6 +187,28 @@ class SqlHandler:
             self.db.rollback()
             return False
     
+    def update(self, sql):
+        try:
+            # 执行SQL语句
+            self.cursor.execute(sql)
+            # 提交到数据库执行
+            self.db.commit()
+        except:
+            # 发生错误时回滚
+            print("ERROR: Can not do this option")
+            self.db.rollback()
+            return False
+        
+    #创建视图
+    def create_view(self, create_view_words):
+        try:
+            # 执行SQL语句
+            self.cursor.execute(create_view_words)
+            # 提交修改
+            self.db.commit()
+        except:
+            # 发生错误时回滚
+            self.db.rollback()
 
 if __name__ == '__main__':
     handler = SqlHandler("user")
