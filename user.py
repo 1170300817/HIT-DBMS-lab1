@@ -33,6 +33,8 @@ class User():
             self.firstName = info[1]
             self.secondName = info[2]
             self.favorType = info[3]
+            self.password = password
+            self.username = username
             print("登陆成功")
             return True, "登陆成功"
     
@@ -53,11 +55,12 @@ class User():
     def changepass(self, password):
         ret = self.dba.changePass(self.id, password)
         if ret == True:
+            self.password = password
             print("修改密码成功")
-            return True
+            return True, "修改密码成功"
         else:
             print("修改密码失败")
-            return False
+            return False, "修改密码失败"
     
     def updateFavor(self, favor):
         ret = self.sqlHandler.updateFavor(self.id, favor)
@@ -69,10 +72,11 @@ class User():
             print("修改喜好失败")
             return ret
     
+    
     #查询某位导演拍的电影：
     def getFilmbyDirector(self, name):
         ret = self.sqlHandler.getFilmbyDirector(name)
-        return self.returnFilms(ret)
+        return self.returnFilms(ret, label=1)
     
     #查某位演员演过的电影:
     def getFilmbyActor(self, name):
@@ -107,6 +111,11 @@ class User():
         ret = self.sqlHandler.getRecommedFilm(self.id)
         return self.returnFilms(ret)
     
+    #更新自己的已看电影
+    def watchFilm(self, film_id):
+        ret = self.sqlHandler.watchFilm(self.id, film_id)
+        return ret
+    
     #写评论
     def writeReview(self, film, text, rank=10, force=False):
         ret = self.sqlHandler.writeReview(film, self.id, text, rank=10, force=False)
@@ -128,17 +137,22 @@ class User():
         return ret
     
     #返回电影信息
-    def returnFilms(self, ret):
+    def returnFilms(self, ret, label=0):
         infoList = []
         flag, ret = ret
         #如果操作出现错误，则会返回错误信息
         if flag == False:
             infoList.append(ret)
             return infoList
-        #如果没有错误
+        #如果没有错误  
         if len(ret) == 0:
             infoList.append("还没有相应记录")
             return infoList
+        if label == 1:
+            for item in ret:
+                infoList.append("电影名称：{}；电影类型：{}；导演：{}·{}; 上映时间：{}".format(item[0], item[1], item[3], item[4], item[2]))
+            return infoList
+          
         for item in ret:
             director = self.sqlHandler.getDirectbyfilm(int(item[3]))
             infoList.append("电影名称：{}；电影类型：{}；导演：{}·{}; 上映时间：{}".format(item[1], item[2], director[1][0][1], director[1][0][2], item[4]))
@@ -152,6 +166,9 @@ class User():
     
     def getFavor(self):
         return self.favorType
+    
+    def getPass(self):
+        return self.password
 #    
 #user = User()
 #user("hhhhhh", "234567")

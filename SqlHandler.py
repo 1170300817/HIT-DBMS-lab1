@@ -21,7 +21,15 @@ class SqlHandler:
     
     def __call__(self, userType):
         self.userType = userType
-        
+    
+    ###################################
+    #
+    #
+    #User 权限
+    #
+    #
+    ###################################
+    
     # 根据导演查电影
     def getFilmbyDirector(self, name):
         # 获得姓名
@@ -29,11 +37,8 @@ class SqlHandler:
         first_name = nameString[0]
         second_name = nameString[1]
 
-        sql = ("select * from film where director in"
-               "(select dir_id from director " 
-               "where firstName = '{}' and secondName = '{}');".format(first_name, second_name)                                                                                               
-               )
-
+        sql = "select * from user_dir_view where firstName = '{}' and secondName = '{}';".format(first_name, second_name)
+        
         result = self.select(sql)
         return True, result
 
@@ -42,30 +47,26 @@ class SqlHandler:
         nameString = name.split(" ")
         first_name = nameString[0]
         second_name = nameString[1]
-        sql = ("select * from film where film_id in"
-               " (select film_id from act where actor_id in "
-               "(select actor_id from actor where firstName = '{}' and secondName = '{}'));".format(first_name,
-                                                                                                    second_name)
-               )
+        sql = ("select * from film where film_id in" 
+               " (select film_id from act where actor_id in " 
+               "(select actor_id from actor where firstName = '{}' and secondName = '{}'));".format(first_name, second_name) 
+        )
         result = self.select(sql)
         return True, result
-
-    #
-    # # 根据年份查电影 ,!!!!!等待完成
-    def getFilmbyTime(self, name):
-        pass
+    
 
     # 根据名字查电影
     def getFilmbyName(self, name):
         sql = "select * from film where title = '%s';" % (name)
         result = self.select(sql)
         return True, result
+
     
     #根据电影查导演
     def getDirectbyfilm(self, dir_id):
         sql = "select * from director where dir_id = {};".format(dir_id)
         result = self.select(sql)
-        return True, result
+        return True, result       
 
     # 按照喜好推荐用户喜欢的，但是还没有看过的电影
     # 作为用户，当用户登陆时，应该将用户的个人信息或者其主键(用户的ID)保存到类的.self中，user指的是用户的主键ID
@@ -168,19 +169,22 @@ class SqlHandler:
             print("非用户，无权限访问")
             return False, "非用户，无权限访问"
         # 检查被推荐用户是否存在
-        check = "select * from recommend where recommended_id = {};".format(recommend)
+        check = "select * from user where userName = '{}';".format(recommend)
         check = self.select(check)
         # 检查时候重复推荐
         if len(check) == 0:
             print("无此用户，请检查后重试")
             return False, "无此用户，请检查后重试"
-        check = "select film_id from recommend where referee_id = {} and recommended_id = {} and film_id = {};".format(
+        check = "select film_id from recommend where referee_id = {} and exists (select * from user where userName = '{}' and recommended_id = user_id)  and film_id = {};".format(
             referee, recommend, film)
         check = self.select(check)
         # 如果重复，报错推出，提示用户重新进行
         if len(check) != 0:
             print("重复给同一个用户推荐同一个电影,请检查后重试")
             return False, "重复给同一个用户推荐同一个电影,请检查后重试"
+        sql = "select user_id from user where userName = '{}';".format(recommend)
+        ret = self.select(sql)
+        recommend = ret[0][0]
         sql = ("insert into recommend values ({}, {}, {});".format(referee, recommend, film))
         self.insert_delete(sql)
         print("成功给对方分享您的推荐，谢谢")
@@ -192,12 +196,12 @@ class SqlHandler:
             print("非用户，无权限访问")
             return False, "非用户，无权限访问"
         # 先看看你写了没就想删除
-        check = "select film_id from recommend where referee_id = {} and recommended_id = {} and film_id = {};".format(
-            referee, recommend, film)
+        check = ("select film_id from recommend where referee_id = {} and " 
+                "recommended_id in (select user_id from user where userName = '{}') and film_id = {};".format(referee, recommend, film))
         check = self.select(check)
         if len(check) != 0:
-            sql = "delete from recommend where referee_id = {} and recommended_id = {} and film_id = {};".format(
-                referee, recommend, film)
+            sql = ("delete from recommend where referee_id = {} and " 
+                   "recommended_id in (select user_id from user where userName = '{}') and film_id = {};".format(referee, recommend, film))
             self.insert_delete(sql)
             print("删除成功！")
             return True, "删除成功！"
@@ -223,7 +227,238 @@ class SqlHandler:
         self.update(sql)
         print("更新类型成功")
         return True, "更新类型成功"
-   
+    
+    #更新自己看过的电影
+    def watchFilm(self, user, film):
+        sql = "select * from watch where film_id = {} and user_id = {};".format(film, user)
+        ret = self.select(sql)
+        if len(ret) != 0:
+            return False, "已经看过此电影了"
+        sql = "insert into watch values ({}, {})".format(user, film)
+        self.insert_delete(sql)
+        return True, "更新已看电影完成"
+    
+    #查用户ID
+    def getuser(self, name):
+        sql = "select user_id from user where userName = '{}'".format(name)
+        result = self.select(sql)
+        return True, result
+    
+    
+    ###################################
+    #
+    #
+    #MANAGER 权限
+    #
+    #
+    ###################################
+    
+    # 新增Act记录
+    def newAct(self, actorname, filmname):
+        if self.userType != "MANAGER":
+            print("非管理员，无权限访问")
+            return False
+        nameString = actorname.split(" ")
+        actfirst = nameString[0]
+        actsecond = nameString[1]
+
+        # 检查演员和电影是否存在，是否有重复元组
+        check1 = "select actor_id from actor where firstName = '{}' and secondName = '{}';".format(actfirst, actsecond)
+        ret1 = self.select(check1)
+        check2 = "select film_id from film where title = '{}';".format(filmname)
+        ret2 = self.select(check2)
+        
+        if len(ret1) == 0:
+            self.newActor(actfirst, actsecond)
+            ret1 = self.select(check1)
+
+        if len(ret2) == 0:
+            print("无此电影，请检查后重试")
+            return False
+        
+        actor_id = ret1[0][0]
+        film_id = ret2[0][0]
+        sql = ("insert into act values ({}, {});".format(actor_id, film_id))
+        self.insert_delete(sql)
+        print("成功插入，谢谢")
+        return True
+
+    # 删除Act记录 1
+    def deleteAct(self, film_id):
+        if self.userType != "MANAGER":
+            print("非管理员，无权限访问")
+            return False
+
+        sql = "delete from act where film_id = {};".format(film_id)
+        self.insert_delete(sql)
+        print("成功删除，谢谢")
+        sql = "delete from actor where actor_id not in (select distinct actor_id from act);"
+        self.insert_delete(sql)
+        return True
+
+    # 新增Actor记录
+    def newActor(self, first_name, second_name):
+        if self.userType != "MANAGER":
+            print("非管理员，无权限访问")
+            return False
+        sql = ("insert into actor (firstName , secondName) values ('{}', '{}');".format(first_name, second_name))
+        self.insert_delete(sql)
+        print("成功插入新演员，谢谢")
+        return True
+
+
+    # 新增director记录 1
+    def newDirector(self, first_name, second_name):
+        if self.userType != "MANAGER":
+            print("非管理员，无权限访问")
+            return False
+        sql = ("insert into director (firstName, secondName) values ('{}', '{}');".format(first_name, second_name))
+        self.insert_delete(sql)
+        print("成功插入新导演，谢谢")
+        return True
+
+    # 删除director记录 1
+    def deleteDirector(self, dir_id):
+        if self.userType != "MANAGER":
+            print("非管理员，无权限访问")
+            return False
+        # 检查要删去的导演是否存在
+        check = "select * from director where dir_id = {};".format(dir_id)
+        check = self.select(check)
+
+        if len(check) == 0:
+            print("无此导演，请检查后重试")
+            return False
+
+        sql = "delete from director where dir_id = {};".format(dir_id)
+        self.insert_delete(sql)
+        print("成功删除导演，谢谢")
+        return True
+
+    # 新增film记录 1
+    def newFilm(self, title, type, first, second):
+        if self.userType != "MANAGER":
+            print("非管理员，无权限访问")
+            return False
+        sql = "select * from manager_film_view where firstName = '{}' and secondName = '{}';".format(first, second)
+        ret = self.select(sql)
+        if len(ret) == 0:
+            print("还未有此导演")
+            self.newDirector(first, second)
+        #查这个人的号码
+        sql = "select dir_id from director where firstName = '{}' and secondName = '{}';".format(first, second)
+        ret = self.select(sql)
+        director_id = ret[0][0]
+        timing = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
+        sql = ("insert into film (title, type, director,time) values ('{}','{}', {},'{}');".format(title, type, director_id, timing))
+        self.insert_delete(sql)
+        print("成功插入，谢谢")
+        return True
+
+    # 删除film记录
+    def deleteFilm(self, film):
+        if self.userType != "MANAGER":
+            print("非管理员，无权限访问")
+            return False
+        #检查有无此电影
+        check = "select film_id, director from film where title = '{}';".format(film)
+        check = self.select(check)
+
+        if len(check) == 0:
+            print("无此电影，请检查后重试")
+            return False
+        #如果有此电影，那么将导演和电影编号记录下来
+        director = check[0][1]
+        film_id = check[0][0]
+        #删除电影
+        sql = "delete from film where film_id = {};".format(film_id)
+        self.insert_delete(sql)
+        print("成功删除，谢谢")
+        #如果这个电影删除了，要检查他的导演是不是也没了
+        sql = "select * from film where director = {};".format(director)
+        ret = self.select(sql)
+        if len(ret) == 0:
+            self.deleteDirector(director)
+        self.deleteAct(film_id)
+        
+        return True
+
+    ###################################
+    #
+    #
+    #DBA 权限
+    #
+    #
+    ###################################
+
+    #查询user记录，登陆用
+    def login(self, userName, password):
+        sql = "select * from DBA_user_view where userName = '{}' and password = '{}';".format(userName, password)
+        result = self.select(sql)
+        
+        if len(result) == 0:
+            return False, None
+        else:
+            return True, result[0]
+    
+    # 新增user记录,要增加用户名重名判断
+    def newUser(self, firstName, secondName, userName, password, favorType='null'):
+        check = "select user_id from DBA_user_view where userName = '{}';".format(userName)
+        check = self.select(check)
+        if len(check) > 0:
+            print("用户名重复，请重新修改用户名")
+            return False, "用户名重复，请重新修改用户名"
+        password = str(password)
+        if len(password) < 6 or len(password) > 10:
+            print("请规范密码长度为6 - 10字符")
+            return False, "请规范密码长度为6 - 10字符"
+        if len(userName) < 6:
+            print("请规范用户名长度至少6字符")
+            return False, "请规范用户名长度至少6字符"
+        sql = (
+            "insert into user (firstName,secondName,favorType,userName,password) values ('{}','{}','{}','{}','{}');".format(
+                firstName, secondName, favorType, userName, password))
+        self.insert_delete(sql)
+        print("成功插入，谢谢")
+        return True, "成功插入，谢谢"
+
+    # 删除user记录 注销？
+    def deleteUser(self, user_id):
+        check = "select * from DBA_user_view where user_id = {};".format(user_id)
+        check = self.select(check)
+
+        if len(check) == 0:
+            print("无此用户，请检查后重试")
+            return False
+
+        sql = "delete from DBA_user_view where user_id = {};".format(user_id)
+        self.insert_delete(sql)
+        print("成功删除，谢谢")
+        return True
+    
+    #修改密码
+    def changePass(self, user_id, password):
+        password = str(password)
+        if len(password) < 6 or len(password) > 10:
+            print("请规范密码长度为6 - 10字符")
+            return False
+        check = "select password from DBA_user_view where user_id = {};".format(user_id)
+        check = self.select(check)
+        if password in check[0]:
+            print("请更换您的密码，不要和旧密码重复")
+            return False
+        sql = "update DBA_user_view set password = '{}' where user_id = {};".format(password, user_id)
+        self.update(sql)
+        print("成功修改密码")
+        return True
+    
+    ###################################
+    #
+    #
+    #三个基本函数，USER MANAGER DBA都可使用
+    #
+    #
+    ###################################
     # 根据命令提供查询，返回元组所有信息
     def select(self, sql):
         try:
@@ -238,8 +473,8 @@ class SqlHandler:
             return False
         results = self.cursor.fetchall()
         return results
-
-    # 根据命令增删元组
+    
+    #根据命令增删元组
     def insert_delete(self, sql):
         try:
             # 执行sql语句
@@ -249,10 +484,9 @@ class SqlHandler:
         except:
             # 如果发生错误则回滚
             print("ERROR: Can not do this option")
-            traceback.print_exc()
             self.db.rollback()
             return False
-
+    
     def update(self, sql):
         try:
             # 执行SQL语句
@@ -265,231 +499,3 @@ class SqlHandler:
             self.db.rollback()
             return False
 
-    # 创建视图
-    def create_view(self, create_view_words):
-        try:
-            # 执行SQL语句
-            self.cursor.execute(create_view_words)
-            # 提交修改
-            self.db.commit()
-        except:
-            # 发生错误时回滚
-            self.db.rollback()
-
-
-    #MANAGER 权限
-    # 新增Act记录
-    def newAct(self, actor_id, film_id):
-        if self.userType != "MANAGER":
-            print("非管理员，无权限访问")
-        # 检查演员和电影是否存在，是否有重复元组
-        check1 = "select * from actor where actor_id = {};".format(actor_id)
-        check1 = self.select(check1)
-        check2 = "select * from film where film_id = {};".format(film_id)
-        check2 = self.select(check2)
-        check3 = "select * from act where film_id = {} and actor_id = {};".format(film_id, actor_id)
-        check3 = self.select(check3)
-
-        if len(check1) == 0:
-            print("无此演员，请检查后重试")
-            return False
-
-        if len(check2) == 0:
-            print("无此电影，请检查后重试")
-            return False
-
-        if len(check3) != 0:
-            print("此记录已存在，请检查后重试")
-            return False
-
-        sql = ("insert into act values ({}, {});".format(actor_id, film_id))
-        self.insert_delete(sql)
-        print("成功插入，谢谢")
-        return True
-
-    # 删除Act记录
-    def deleteAct(self, actor_id, film_id):
-        if self.userType != "MANAGER":
-            print("非管理员，无权限访问")
-        # 检查要删去的关系是否存在
-        check = "select * from act where actor_id = {} and film_id = {};".format(actor_id, film_id)
-        check = self.select(check)
-
-        if len(check) == 0:
-            print("无此演出关系，请检查后重试")
-            return False
-
-        sql = "delete from act where actor_id = {} and film_id = {};".format(actor_id, film_id)
-        self.insert_delete(sql)
-        print("成功删除，谢谢")
-        return True
-
-    # 新增Actor记录
-    def newActor(self, first_name, second_name):
-        if self.userType != "MANAGER":
-            print("非管理员，无权限访问")
-        sql = ("insert into actor (firstName , secondName) values ('{}', '{}');".format(first_name, second_name))
-        self.insert_delete(sql)
-        print("成功插入新演员，谢谢")
-        return True
-
-    # 删除Actor记录
-    def deleteActor(self, first_name, second_name):
-        if self.userType != "MANAGER":
-            print("非管理员，无权限访问")
-        # 检查要删去的演员是否存在
-        check = "select * from actor where firstName = '{}' and secondName ='{}';".format(first_name, second_name)
-        check = self.select(check)
-
-        if len(check) == 0:
-            print("无此演员，请检查后重试")
-            return False
-
-        sql = "delete from actor where firstName = '{}' and secondName ='{}';".format(first_name, second_name)
-        self.insert_delete(sql)
-        print("成功删除演员，谢谢")
-        return True
-
-    # 新增director记录
-    def newDirector(self, first_name, second_name):
-        if self.userType != "MANAGER":
-            print("非管理员，无权限访问")
-        sql = ("insert into director (firstName, secondName) values ('{}', '{}');".format(first_name, second_name))
-        self.insert_delete(sql)
-        print("成功插入新导演，谢谢")
-        return True
-
-    # 删除director记录
-    def deleteDirector(self, first_name, second_name):
-        if self.userType != "MANAGER":
-            print("非管理员，无权限访问")
-        # 检查要删去的导演是否存在
-        check = "select * from director where firstName = '{}' and secondName ='{}';".format(first_name, second_name)
-        check = self.select(check)
-
-        if len(check) == 0:
-            print("无此导演，请检查后重试")
-            return False
-
-        sql = "delete from director where firstName = '{}' and secondName = '{}';".format(first_name, second_name)
-        self.insert_delete(sql)
-        print("成功删除导演，谢谢")
-        return True
-
-    # 新增film记录
-    def newFilm(self, title, type, director_id):
-        if self.userType != "MANAGER":
-            print("非管理员，无权限访问")
-        timing = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
-        sql = ("insert into film (title, type, director,time) values ('{}','{}', {},'{}');".format(title, type,
-                                                                                                   director_id, timing))
-        self.insert_delete(sql)
-        print("成功插入，谢谢")
-        return True
-
-    # 删除film记录
-    def deleteFilm(self, film_id):
-        if self.userType != "MANAGER":
-            print("非管理员，无权限访问")
-        check = "select * from film where film_id = {};".format(film_id)
-        check = self.select(check)
-
-        if len(check) == 0:
-            print("无此电影，请检查后重试")
-            return False
-
-        sql = "delete from film where film_id = {};".format(film_id)
-        self.insert_delete(sql)
-        print("成功删除，谢谢")
-        return True
-
-
-
-
-    ##DBA
-    #查询user记录，登陆用
-    def login(self, userName, password):
-        sql = "select * from user where userName = '{}' and password = '{}';".format(userName, password)
-        result = self.select(sql)
-        
-        if len(result) == 0:
-            return False, None
-        else:
-            return True, result[0]
-    
-    # 新增user记录,要增加用户名重名判断
-    def newUser(self, firstName, secondName, userName, password, favorType='null'):
-        check = "select user_id from user where userName = '{}';".format(userName)
-        check = self.select(check)
-        if len(check) > 0:
-            print("用户名重复，请重新修改用户名")
-            return False, "用户名重复，请重新修改用户名"
-        password = str(password)
-        if len(password) < 6 or len(password) > 10:
-            print("请规范密码长度为6 - 10字符")
-            return False, "请规范密码长度为6 - 10字符"
-        sql = (
-            "insert into user (firstName,secondName,favorType,userName,password) values ('{}','{}','{}','{}','{}');".format(
-                firstName, secondName, favorType, userName, password))
-        self.insert_delete(sql)
-        print("成功插入，谢谢")
-        return True, "成功插入，谢谢"
-
-    # 删除user记录 注销？
-    def deleteUser(self, user_id):
-        check = "select * from user where user_id = {};".format(user_id)
-        check = self.select(check)
-
-        if len(check) == 0:
-            print("无此用户，请检查后重试")
-            return False
-
-        sql = "delete from user where user_id = {};".format(user_id)
-        self.insert_delete(sql)
-        print("成功删除，谢谢")
-        return True
-    
-    #修改密码
-    def changePass(self, user_id, password):
-        password = str(password)
-        if len(password) < 6 or len(password) > 10:
-            print("请规范密码长度为6 - 10字符")
-            return False
-        check = "select password from user where user_id = {};".format(user_id)
-        check = self.select(check)
-        if password in check[0]:
-            print("请更换您的密码，不要和旧密码重复")
-            return False
-        sql = "update user set password = '{}' where user_id = {};".format(password, user_id)
-        self.update(sql)
-        print("成功修改密码")
-        return True
-
-if __name__ == '__main__':
-    handler = SqlHandler("user")
-
-    # handler.newUser('a', 'a', 'a', 'a', 'a')
-    # handler.deleteUser(101)
-    # handler.newAct(50, 512)
-    # handler.deleteAct(50, 512)
-    # handler.newActor('aaa', 'wdd')
-    # handler.deleteActor(122, 212)
-    # handler.newDirector('aa', 'bb')
-    # handler.deleteDirector('aa', 'bb')
-    # result = handler.getFilmbyDirector("HENRY BERRY")
-    # handler.newFilm('a', 'a', 13)
-    # handler.deleteFilm(512)
-    # result = handler.getFilmbyActor('PARKER GOLDBERG')
-    # result = handler.getFilmbyName("BEETHOVEN EXORCIST")
-#    result = handler.getFavorFilms(101)
-#    print(result)
-#    result = handler.getMostFavorFilm(4)
-#    print(result[0][0])
-    # result = handler.getMostRankingFilm(30, 9)
-    # result = handler.getRecommedFilm(1)
-    # result = handler.writeReview(1, 15,
-    #                              'A Epic Panorama of a Mad Scientist And a Monkey who must Redeem a Secret Agent in Berlin',
-    #                              9, False)
-    # result = handler.deleteReview(1, 41)
-#    result = handler.login('f8thJ0', '123456')
-#    print(result[0], result[1])
